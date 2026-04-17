@@ -3,28 +3,12 @@ from langchain_ollama import ChatOllama
 from typing import TypedDict
 
 # ==================== CONFIGURATION (EASY TO CHANGE) ====================
-TARGET_COMPANY = "KPMG"                    # ← Change this to any company
-TARGET_ROLE = "AI Consulting / AI Strategy"   # ← Change this to the role type
+TARGET_COMPANY = ""                    # ← Change this to any company
+TARGET_ROLE = ""   # ← Change this to the role type
 INTERNAL_REFERRAL_NAME = "[Referrer’s Full Name]"   # ← Put the actual name or leave as placeholder
 
 # ==================== YOUR REAL BACKGROUND ====================
 user_profile = """
-Bachelor’s in Math from UC Santa Barbara (2017 – Present).
-
-LEGO Instructor at Strategic Kids, Irvine (Sep 2022 – Jun 2023): Designed and delivered age-appropriate STEM curriculum, conducted interactive sessions for 50+ students, performed assessments, encouraged teamwork and problem-solving, adapted teaching methods.
-
-Math Tutor at For Love of Children (Jan 2021 – May 2021): Tutored middle schooler in multiplication and division.
-
-Visitor Liaison at US Department of Energy (Oct 2015): Monitored lines, counted visitors, answered wayfinding questions.
-
-Certifications:
-- Prompt Engineering (May 2024 – Present)
-- Data Science Fundamentals with Python and SQL (Jan 2024 – Present)
-- Google Data Analytics Certificate (Nov 2022 – Present)
-
-Skills: Analytics, Python, R, SQL, Excel, curriculum development, teaching, classroom management, experience with children/students.
-
-Currently building local multi-agent AI systems using Ollama, LangGraph, and Docker on personal hardware.
 """
 
 # ==================== LLM SETUP ====================
