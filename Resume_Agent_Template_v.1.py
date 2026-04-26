@@ -2,6 +2,8 @@ from langgraph.graph import StateGraph, END
 from langchain_ollama import ChatOllama
 from typing import TypedDict
 
+# CodeRabbit review test - April 2026
+
 # ==================== CONFIGURATION (EASY TO CHANGE) ====================
 TARGET_COMPANY = ""                    # ← Change this to any company
 TARGET_ROLE = ""   # ← Change this to the role type
@@ -9,6 +11,7 @@ INTERNAL_REFERRAL_NAME = "[Referrer’s Full Name]"   # ← Put the actual name 
 
 # ==================== YOUR REAL BACKGROUND ====================
 user_profile = """
+
 """
 
 # ==================== LLM SETUP ====================
