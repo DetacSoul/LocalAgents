@@ -81,7 +81,7 @@ def invoke_with_retry(llm, prompt, prompt_name="prompt", max_retries=MAX_RETRIES
             error_type = type(e).__name__
             logger.warning(
                 f"LLM invocation failed for {prompt_name} (attempt {attempt}/{max_retries}): "
-                f"{error_type} - {str(e)}"
+                f"{error_type} - {e!s}"
             )
 
             if attempt < max_retries:
@@ -94,7 +94,7 @@ def invoke_with_retry(llm, prompt, prompt_name="prompt", max_retries=MAX_RETRIES
     # All retries exhausted
     raise LLMInvocationError(
         f"LLM invocation failed for {prompt_name} after {max_retries} attempts. "
-        f"Last error: {type(last_exception).__name__} - {str(last_exception)}"
+        f"Last error: {type(last_exception).__name__} - {last_exception!s}"
     )
 
 # ==================== AGENTS ====================
