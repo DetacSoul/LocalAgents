@@ -2,11 +2,22 @@ from langgraph.graph import StateGraph, END
 from langchain_ollama import ChatOllama
 from typing import TypedDict
 import os
+import sys
+import time
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ==================== CONFIGURATION (EASY TO CHANGE) ====================
 TARGET_COMPANY = "KPMG"                          # ← Change this to any company
 TARGET_ROLE = "AI Consulting / AI Strategy"      # ← Change this to the role type
 INTERNAL_REFERRAL_NAME = "Referrer's Full Name"  # ← Put the actual name or leave as placeholder
+
+# Retry configuration
+MAX_RETRIES = 3
+RETRY_DELAY_BASE = 2  # seconds
 
 # ==================== LOAD PERSONAL PROFILE (Gitignored) ====================
 try:
@@ -32,6 +43,59 @@ class AgentState(TypedDict):
     cover_letter: str
     final_review: str
 
+# ==================== ERROR HANDLING HELPER ====================
+
+class LLMInvocationError(Exception):
+    """Raised when LLM invocation fails after all retries"""
+    pass
+
+def invoke_with_retry(llm, prompt, prompt_name="prompt", max_retries=MAX_RETRIES, retry_delay=RETRY_DELAY_BASE):
+    """
+    Invoke LLM with retry logic for transient/network errors.
+    
+    Args:
+        llm: The LLM instance to invoke
+        prompt: The prompt to send to the LLM
+        prompt_name: Identifier for logging (e.g., 'bullets_prompt', 'skills_prompt')
+        max_retries: Maximum number of retry attempts
+        retry_delay: Base delay in seconds for exponential backoff
+    
+    Returns:
+        LLM response object
+    
+    Raises:
+        LLMInvocationError: If all retries fail
+    """
+    last_exception = None
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            logger.info(f"Invoking LLM for {prompt_name} (attempt {attempt}/{max_retries})")
+            response = llm.invoke(prompt)
+            logger.info(f"Successfully invoked LLM for {prompt_name}")
+            return response
+            
+        except Exception as e:
+            last_exception = e
+            error_type = type(e).__name__
+            logger.warning(
+                f"LLM invocation failed for {prompt_name} (attempt {attempt}/{max_retries}): "
+                f"{error_type} - {str(e)}"
+            )
+            
+            if attempt < max_retries:
+                delay = retry_delay * (2 ** (attempt - 1))  # Exponential backoff
+                logger.info(f"Retrying {prompt_name} in {delay} seconds...")
+                time.sleep(delay)
+            else:
+                logger.error(f"All {max_retries} attempts failed for {prompt_name}")
+    
+    # All retries exhausted
+    raise LLMInvocationError(
+        f"LLM invocation failed for {prompt_name} after {max_retries} attempts. "
+        f"Last error: {type(last_exception).__name__} - {str(last_exception)}"
+    )
+
 # ==================== AGENTS ====================
 
 def writer(state: AgentState):
@@ -43,7 +107,14 @@ User profile: {state['user_profile']}
 Write 6-8 strong, achievement-oriented resume bullet points ({TARGET_COMPANY} style: focus on client impact, business value, technical + consulting/communication skills).
 Do not invent any achievements."""
 
-    bullets_response = llm.invoke(bullets_prompt)
+    try:
+        bullets_response = invoke_with_retry(llm, bullets_prompt, prompt_name="bullets_prompt")
+    except LLMInvocationError as e:
+        logger.error(f"Failed to generate resume bullets: {e}")
+        return {
+            "resume_bullets": "[ERROR: Failed to generate resume bullets. Please check logs and retry.]",
+            "cover_letter": ""
+        }
 
     # Cover letter
     cover_prompt = f"""You are an expert cover letter writer for {TARGET_COMPANY}.
@@ -52,7 +123,14 @@ User profile: {state['user_profile']}
 Write one concise cover letter paragraph (max 7 sentences) that naturally mentions the internal referral from {INTERNAL_REFERRAL_NAME}.
 Do not invent any achievements."""
 
-    cover_response = llm.invoke(cover_prompt)
+    try:
+        cover_response = invoke_with_retry(llm, cover_prompt, prompt_name="cover_prompt")
+    except LLMInvocationError as e:
+        logger.error(f"Failed to generate cover letter: {e}")
+        return {
+            "resume_bullets": bullets_response.content.strip() if bullets_response else "",
+            "cover_letter": "[ERROR: Failed to generate cover letter. Please check logs and retry.]"
+        }
 
     return {
         "resume_bullets": bullets_response.content.strip(),
@@ -72,7 +150,20 @@ Cover Letter Paragraph:
 Review the above for professionalism, clarity, impact, and {TARGET_COMPANY} tone.
 Fix any hallucinations or weak points and provide the final polished version."""
 
-    response = llm.invoke(prompt)
+    try:
+        response = invoke_with_retry(llm, prompt, prompt_name="reviewer_prompt")
+    except LLMInvocationError as e:
+        logger.error(f"Failed to generate final review: {e}")
+        # Return fallback with original content if review fails
+        fallback_review = f"""RESUME BULLETS:
+{state.get('resume_bullets', 'No bullets provided')}
+
+COVER LETTER:
+{state.get('cover_letter', 'No cover letter provided')}
+
+[ERROR: Review generation failed. Please check logs and retry.]"""
+        return {"final_review": fallback_review}
+    
     return {"final_review": response.content}
 
 # ==================== BUILD THE GRAPH ====================
@@ -91,7 +182,9 @@ agent_crew = workflow.compile()
 # ==================== RUN IT ====================
 if __name__ == "__main__":
     if not user_profile.strip() or "Replace this with" in user_profile:
-        print("⚠️  Warning: user_profile is empty or placeholder. Please create personal_profile.py")
+        logger.error("user_profile is empty or contains placeholder. Please create personal_profile.py with valid content.")
+        print("⚠️  Error: user_profile is empty or placeholder. Please create personal_profile.py")
+        sys.exit(1)
     
     print(f"Starting {TARGET_COMPANY} {TARGET_ROLE} Resume Agent...\n")
     
