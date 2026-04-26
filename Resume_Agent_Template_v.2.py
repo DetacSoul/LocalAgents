@@ -5,6 +5,7 @@ import os
 import sys
 import time
 import logging
+import ollama
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -75,14 +76,14 @@ def invoke_with_retry(llm, prompt, prompt_name="prompt", max_retries=MAX_RETRIES
             logger.info(f"Successfully invoked LLM for {prompt_name}")
             return response
             
-        except Exception as e:
+        except (ollama.ResponseError, TimeoutError, ConnectionError, OSError) as e:
             last_exception = e
             error_type = type(e).__name__
             logger.warning(
                 f"LLM invocation failed for {prompt_name} (attempt {attempt}/{max_retries}): "
                 f"{error_type} - {str(e)}"
             )
-            
+
             if attempt < max_retries:
                 delay = retry_delay * (2 ** (attempt - 1))  # Exponential backoff
                 logger.info(f"Retrying {prompt_name} in {delay} seconds...")
@@ -139,13 +140,28 @@ Do not invent any achievements."""
 
 def reviewer(state: AgentState):
     """Now properly receives the content to review"""
+    # Check for error sentinels in upstream outputs
+    resume_bullets = state.get('resume_bullets', '')
+    cover_letter = state.get('cover_letter', '')
+
+    if "[ERROR:" in resume_bullets or "[ERROR:" in cover_letter:
+        # Short-circuit: preserve original error messages without invoking LLM
+        fallback_review = f"""RESUME BULLETS:
+{resume_bullets if resume_bullets else 'No bullets provided'}
+
+COVER LETTER:
+{cover_letter if cover_letter else 'No cover letter provided'}
+
+[ERROR: Upstream errors detected. Review skipped.]"""
+        return {"final_review": fallback_review}
+
     prompt = f"""You are a senior {TARGET_COMPANY} hiring manager reviewing application materials.
 
 Resume Bullets:
-{state.get('resume_bullets', 'No bullets provided')}
+{resume_bullets if resume_bullets else 'No bullets provided'}
 
 Cover Letter Paragraph:
-{state.get('cover_letter', 'No cover letter provided')}
+{cover_letter if cover_letter else 'No cover letter provided'}
 
 Review the above for professionalism, clarity, impact, and {TARGET_COMPANY} tone.
 Fix any hallucinations or weak points and provide the final polished version."""
@@ -156,14 +172,14 @@ Fix any hallucinations or weak points and provide the final polished version."""
         logger.error(f"Failed to generate final review: {e}")
         # Return fallback with original content if review fails
         fallback_review = f"""RESUME BULLETS:
-{state.get('resume_bullets', 'No bullets provided')}
+{resume_bullets if resume_bullets else 'No bullets provided'}
 
 COVER LETTER:
-{state.get('cover_letter', 'No cover letter provided')}
+{cover_letter if cover_letter else 'No cover letter provided'}
 
 [ERROR: Review generation failed. Please check logs and retry.]"""
         return {"final_review": fallback_review}
-    
+
     return {"final_review": response.content}
 
 # ==================== BUILD THE GRAPH ====================
@@ -181,7 +197,7 @@ agent_crew = workflow.compile()
 
 # ==================== RUN IT ====================
 if __name__ == "__main__":
-    if not user_profile.strip() or "Replace this with" in user_profile:
+    if not isinstance(user_profile, str) or not user_profile.strip() or "Replace this with" in user_profile:
         logger.error("user_profile is empty or contains placeholder. Please create personal_profile.py with valid content.")
         print("⚠️  Error: user_profile is empty or placeholder. Please create personal_profile.py")
         sys.exit(1)
