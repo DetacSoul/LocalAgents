@@ -7,7 +7,7 @@ from typing import TypedDict
 # ==================== CONFIGURATION (EASY TO CHANGE) ====================
 TARGET_COMPANY = ""                    # ← Change this to any company
 TARGET_ROLE = ""   # ← Change this to the role type
-INTERNAL_REFERRAL_NAME = "[Referrer’s Full Name]"   # ← Put the actual name or leave as placeholder
+INTERNAL_REFERRAL_NAME = "[Referrer's Full Name]"   # ← Put the actual name or leave as placeholder
 
 # ==================== YOUR REAL BACKGROUND ====================
 user_profile = """
@@ -109,8 +109,21 @@ agent_crew = workflow.compile()
 # ==================== RUN IT ====================
 
 if __name__ == "__main__":
+    # Validate required configuration
+    if not TARGET_COMPANY or not TARGET_ROLE:
+        raise ValueError(
+            "Configuration Error: TARGET_COMPANY and TARGET_ROLE must be set.\n"
+            "Please update lines 8-9 with your target company and role before running."
+        )
+
+    if not user_profile.strip():
+        raise ValueError(
+            "Configuration Error: user_profile must be filled in.\n"
+            "Please update lines 13-15 with your background (experience, skills, education) before running."
+        )
+
     print(f"Starting {TARGET_COMPANY} {TARGET_ROLE} Resume Agent...\n")
-    
+
     result = agent_crew.invoke({
         "user_profile": user_profile,
         "job_analysis": "",
