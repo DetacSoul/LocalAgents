@@ -6,7 +6,7 @@ import os
 # ==================== CONFIGURATION (EASY TO CHANGE) ====================
 TARGET_COMPANY = "KPMG"                          # ← Change this to any company
 TARGET_ROLE = "AI Consulting / AI Strategy"      # ← Change this to the role type
-INTERNAL_REFERRAL_NAME = "Referrer’s Full Name"  # ← Put the actual name or leave as placeholder
+INTERNAL_REFERRAL_NAME = "Referrer's Full Name"  # ← Put the actual name or leave as placeholder
 
 # ==================== LOAD PERSONAL PROFILE (Gitignored) ====================
 try:
