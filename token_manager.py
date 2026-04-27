@@ -1,6 +1,6 @@
 from typing import Dict, Optional, Tuple
-import tiktoken
 import re
+import json
 
 class TokenManager:
     def __init__(self):
@@ -14,13 +14,14 @@ class TokenManager:
 
         # Try to load tiktoken for common families
         try:
+            import tiktoken
             if any(x in model_name.lower() for x in ["gpt", "qwen", "llama", "gemma", "mistral"]):
                 enc = tiktoken.get_encoding("cl100k_base")  # Good default for many models
             else:
                 enc = tiktoken.get_encoding("o200k_base")   # Newer OpenAI-style
             self.tokenizers[model_name] = enc
             return enc
-        except:
+        except Exception:
             # Fallback: simple whitespace + punctuation count
             return None
 
@@ -39,6 +40,15 @@ class TokenManager:
         total = 0
         for msg in messages:
             content = msg.get("content", "") if isinstance(msg, dict) else str(msg)
+            # Normalize content to string
+            if content is None:
+                content = ""
+            elif isinstance(content, str):
+                pass  # Already a string
+            elif isinstance(content, (list, dict)):
+                content = json.dumps(content, ensure_ascii=False)
+            else:
+                content = str(content)
             total += self.count_tokens(content, model_name)
         
         # Add overhead for system prompt, formatting, etc.
