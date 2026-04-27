@@ -1,6 +1,13 @@
 from langgraph.graph import StateGraph, END
 from langchain_ollama import ChatOllama
 from typing import TypedDict
+import time
+import random
+import logging
+import ollama
+
+logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger(__name__)
 
 llm = ChatOllama(
     model="qwen2.5:14b",
@@ -16,6 +23,22 @@ class ResearchState(TypedDict):
     compounding_assessment: str
     final_recommendation: str
 
+# ==================== HELPER FUNCTIONS ====================
+
+def invoke_with_retry(fn, *args, max_retries=3, **kwargs):
+    """Retry wrapper for LLM invoke calls with exponential backoff and jitter."""
+    for attempt in range(max_retries):
+        try:
+            return fn(*args, **kwargs)
+        except (ollama.ResponseError, TimeoutError, ConnectionError, OSError) as e:
+            if attempt == max_retries - 1:
+                logger.error(f"Failed after {max_retries} attempts: {e}")
+                raise
+
+            wait_time = (2 ** attempt) + random.uniform(0, 1)
+            logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying in {wait_time:.2f}s...")
+            time.sleep(wait_time)
+
 # ==================== AGENTS ====================
 
 def trend_researcher(state: ResearchState):
@@ -23,45 +46,81 @@ def trend_researcher(state: ResearchState):
 Topic: {state['topic']}
 
 Provide a concise but thorough overview of the current state of this topic, including recent developments, key players, and momentum."""
-    response = llm.invoke(prompt)
-    return {"trend_research": response.content}
+    wrapped_response = invoke_with_retry(llm.invoke, prompt)
+    return {"trend_research": wrapped_response.content}
 
 def opportunity_analyzer(state: ResearchState):
+    research_notes = state.get("trend_research", "")
     prompt = f"""You are an expert opportunity analyst.
 Topic: {state['topic']}
 
+Previous Research:
+{research_notes}
+
 Based on the research, identify the biggest potential opportunities, applications, and leverage points."""
-    response = llm.invoke(prompt)
-    return {"opportunity_analysis": response.content}
+    wrapped_response = invoke_with_retry(llm.invoke, prompt)
+    return {"opportunity_analysis": wrapped_response.content}
 
 def risk_evaluator(state: ResearchState):
+    research_notes = state.get("trend_research", "")
+    opportunity_notes = state.get("opportunity_analysis", "")
     prompt = f"""You are a critical risk and feasibility evaluator.
 Topic: {state['topic']}
 
+Previous Research:
+{research_notes}
+
+Identified Opportunities:
+{opportunity_notes}
+
 Be honest and thorough. What are the major risks, challenges, competition, technical hurdles, time/cost realities, and reasons this might not work?"""
-    response = llm.invoke(prompt)
-    return {"risk_evaluation": response.content}
+    wrapped_response = invoke_with_retry(llm.invoke, prompt)
+    return {"risk_evaluation": wrapped_response.content}
 
 def compounding_assessor(state: ResearchState):
+    research_notes = state.get("trend_research", "")
+    opportunity_notes = state.get("opportunity_analysis", "")
+    risk_notes = state.get("risk_evaluation", "")
     prompt = f"""You are an expert at evaluating compounding potential.
 Topic: {state['topic']}
 
+Previous Research:
+{research_notes}
+
+Identified Opportunities:
+{opportunity_notes}
+
+Risk Assessment:
+{risk_notes}
+
 How much long-term optionality, network effects, skill stacking, or exponential growth potential does this direction have?"""
-    response = llm.invoke(prompt)
-    return {"compounding_assessment": response.content}
+    wrapped_response = invoke_with_retry(llm.invoke, prompt)
+    return {"compounding_assessment": wrapped_response.content}
 
 def final_recommender(state: ResearchState):
+    opportunity_notes = state.get("opportunity_analysis", "")
+    risk_notes = state.get("risk_evaluation", "")
+    compounding_notes = state.get("compounding_assessment", "")
     prompt = f"""You are a final strategic recommender.
 
 Topic: {state['topic']}
 
+Opportunity Analysis:
+{opportunity_notes}
+
+Risk Evaluation:
+{risk_notes}
+
+Compounding Assessment:
+{compounding_notes}
+
 Synthesize all previous analysis and give a clear recommendation:
 - Should this be pursued seriously?
 - What is the realistic upside vs downside?
-- What should be the next 1–3 concrete actions?"""
+- What should be the next 1-3 concrete actions?"""
 
-    response = llm.invoke(prompt)
-    return {"final_recommendation": response.content}
+    wrapped_response = invoke_with_retry(llm.invoke, prompt)
+    return {"final_recommendation": wrapped_response.content}
 
 # ==================== BUILD THE GRAPH ====================
 
@@ -86,9 +145,13 @@ research_system = workflow.compile()
 
 if __name__ == "__main__":
     topic = input("Enter the topic or idea you want to research: ")
-    
+
+    if not topic or not topic.strip():
+        print("Please enter a non-empty topic.")
+        exit()
+
     print(f"\nStarting Research System for: {topic}\n")
-    
+
     result = research_system.invoke({
         "topic": topic,
         "trend_research": "",
