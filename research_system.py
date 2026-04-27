@@ -148,10 +148,13 @@ if __name__ == "__main__":
 
     if not topic or not topic.strip():
         print("Please enter a non-empty topic.")
-        exit()
-
+    topic = input("Enter the topic or idea you want to research: ")
+    topic = topic.strip()
+    if not topic:
+        raise ValueError("Topic cannot be empty.")
+    
     print(f"\nStarting Research System for: {topic}\n")
-
+    
     result = research_system.invoke({
         "topic": topic,
         "trend_research": "",
