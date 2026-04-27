@@ -1,0 +1,20 @@
+# Resume Agent Configuration
+
+target:
+  company: "KPMG"
+  role: "AI Consulting / AI Strategy"
+  referral_name: null  # Set to a name string to include referral, or null to omit
+
+llm:
+  provider: "ollama"
+  model: "qwen2.5:14b"
+  base_url: "http://localhost:11434"
+  temperature: 0.4
+
+retry:
+  max_attempts: 3
+  base_delay_seconds: 2
+
+output:
+  directory: "outputs"
+  format: "markdown"
